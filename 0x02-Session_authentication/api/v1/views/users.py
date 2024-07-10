@@ -1,92 +1,127 @@
 #!/usr/bin/env python3
+"""Module of Users views.
 """
-Route module for the API
-"""
-from os import getenv
 from api.v1.views import app_views
-from flask import Flask, jsonify, abort, request
-from flask_cors import (CORS, cross_origin)
-import os
+from flask import abort, jsonify, request
+from models.user import User
 
 
-app = Flask(__name__)
-app.register_blueprint(app_views)
-CORS(app, resources={r"/api/v1/*": {"origins": "*"}})
-auth = None
-
-
-auth = os.getenv("AUTH_TYPE")
-# Intialize auth instance based on authentication
-# type from environment variable.
-if (auth):
-    if (auth == "basic_auth"):
-        from api.v1.auth.basic_auth import BasicAuth
-        auth = BasicAuth()
-    elif (auth == "session_auth"):
-        from api.v1.auth.session_auth import SessionAuth
-        auth = SessionAuth()
-    elif (auth == "session_exp_auth"):
-        from api.v1.auth.session_exp_auth import SessionExpAuth
-        auth = SessionExpAuth()
-    elif (auth == "session_db_auth"):
-        from api.v1.auth.session_db_auth import SessionDBAuth
-        auth = SessionDBAuth()
-    else:
-        from api.v1.auth.auth import Auth
-        auth = Auth()
-
-
-@app.errorhandler(404)
-def not_found(error) -> str:
-    """ Not found handler
+@app_views.route('/users', methods=['GET'], strict_slashes=False)
+def view_all_users() -> str:
+    """GET /api/v1/users
+    Return:
+      - list of all User objects JSON represented.
     """
-    return jsonify({"error": "Not found"}), 404
+    all_users = [user.to_json() for user in User.all()]
+    return jsonify(all_users)
 
 
-@app.errorhandler(401)
-def not_authorized(error) -> str:
+@app_views.route('/users/<user_id>', methods=['GET'], strict_slashes=False)
+def view_one_user(user_id: str = None) -> str:
+    """GET /api/v1/users/:id
+    Path parameter:
+      - User ID.
+    Return:
+      - User object JSON represented.
+      - 404 if the User ID doesn't exist.
     """
-    Default handler for unauthorized requests.
+    if user_id is None:
+        abort(404)
+    if user_id == 'me':
+        if request.current_user is None:
+            abort(404)
+        else:
+            return jsonify(request.current_user.to_json())
+    user = User.get(user_id)
+    if user is None:
+        abort(404)
+    return jsonify(user.to_json())
+
+
+@app_views.route('/users/<user_id>', methods=['DELETE'], strict_slashes=False)
+def delete_user(user_id: str = None) -> str:
+    """DELETE /api/v1/users/:id
+    Path parameter:
+      - User ID.
+    Return:
+      - empty JSON is the User has been correctly deleted.
+      - 404 if the User ID doesn't exist.
     """
-    return (jsonify({"error": "Unauthorized"}), 401)
+    if user_id is None:
+        abort(404)
+    user = User.get(user_id)
+    if user is None:
+        abort(404)
+    user.remove()
+    return jsonify({}), 200
 
 
-@app.errorhandler(403)
-def not_allowed(error) -> str:
+@app_views.route('/users', methods=['POST'], strict_slashes=False)
+def create_user() -> str:
+    """POST /api/v1/users/
+    JSON body:
+      - email.
+      - password.
+      - last_name (optional).
+      - first_name (optional).
+    Return:
+      - User object JSON represented.
+      - 400 if can't create the new User.
     """
-    Default handler for requests forbidden
-    resource.
+    rj = None
+    error_msg = None
+    try:
+        rj = request.get_json()
+    except Exception as e:
+        rj = None
+    if rj is None:
+        error_msg = "Wrong format"
+    if error_msg is None and rj.get("email", "") == "":
+        error_msg = "email missing"
+    if error_msg is None and rj.get("password", "") == "":
+        error_msg = "password missing"
+    if error_msg is None:
+        try:
+            user = User()
+            user.email = rj.get("email")
+            user.password = rj.get("password")
+            user.first_name = rj.get("first_name")
+            user.last_name = rj.get("last_name")
+            user.save()
+            return jsonify(user.to_json()), 201
+        except Exception as e:
+            error_msg = "Can't create User: {}".format(e)
+    return jsonify({'error': error_msg}), 400
+
+
+@app_views.route('/users/<user_id>', methods=['PUT'], strict_slashes=False)
+def update_user(user_id: str = None) -> str:
+    """PUT /api/v1/users/:id
+    Path parameter:
+      - User ID.
+    JSON body:
+      - last_name (optional).
+      - first_name (optional).
+    Return:
+      - User object JSON represented.
+      - 404 if the User ID doesn't exist.
+      - 400 if can't update the User.
     """
-    return (jsonify({"error": "Forbidden"}), 403)
-
-
-@app.before_request
-def before_request():
-    """
-    Handler to filter incoming requests.
-    """
-    paths = ["/api/v1/status/",
-             "/api/v1/unauthorized/",
-             "/api/v1/forbidden/",
-             "/api/v1/auth_session/login/"]
-
-    path = request.path
-
-    if (auth and auth.require_auth(path, paths)):
-        # Check for unauthorized requests
-        if (not auth.authorization_header(request) and
-                not auth.session_cookie(request)):
-            abort(401)
-
-        # Retrieve the current authenticated user
-        request.current_user = auth.current_user(request)
-
-        # Check for forbidden requests
-        if (not auth.current_user(request)):
-            abort(403)
-
-
-if __name__ == "__main__":
-    host = getenv("API_HOST", "0.0.0.0")
-    port = getenv("API_PORT", "5000")
-    app.run(host=host, port=port, debug=True)
+    if user_id is None:
+        abort(404)
+    user = User.get(user_id)
+    if user is None:
+        abort(404)
+    rj = None
+    try:
+        rj = request.get_json()
+    except Exception as e:
+        rj = None
+    if rj is None:
+        return jsonify({'error': "Wrong format"}), 400
+    if rj.get('first_name') is not None:
+        user.first_name = rj.get('first_name')
+    if rj.get('last_name') is not None:
+        user.last_name = rj.get('last_name')
+    user.save()
+    return jsonify(user.to_json()), 200
