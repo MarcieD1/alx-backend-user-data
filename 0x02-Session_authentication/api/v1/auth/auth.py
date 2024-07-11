@@ -1,47 +1,79 @@
 #!/usr/bin/env python3
-""" Auth module """
-from flask import request
+"""
+Module for authentication
+"""
 from typing import List, TypeVar
-from models.user import User
+
+from flask import request
 
 
-class Auth:
-    """ class auth for authenticating users"""
+class Auth():
+    """Template for all authentication system implemented in this app.
+    """
 
     def require_auth(self, path: str, excluded_paths: List[str]) -> bool:
-        """ require auth function that returns false"""
-        if excluded_paths and path:
-            if path[-1] == '/':
-                new_path = path[:-1]
-            else:
-                new_path = path
-            new_excluded_path = []
-            for element in excluded_paths:
-                if element[-1] == '/':
-                    new_excluded_path.append(element[:-1])
-                if element[-1] == '*':
-                    if new_path.startswith(element[:-1]):
-                        return False
+        """This function takes a path and a list of excluded paths as arguments
+        and returns a boolean value.
 
-            if new_path not in new_excluded_path:
-                return True
-            else:
-                return False
-        if path is None:
+        Returns True if `path` is None.
+        Returns True if `excluded_paths` is None or empty.
+        Returns False if `path` is in `excluded_paths`.
+        You can assume excluded_paths contains string path always ending by
+        a /. This method must be slash tolerant: path=/api/v1/status and
+        path=/api/v1/status/ must be returned False if excluded_paths contains
+        /api/v1/status/.
+
+        Args:
+            path (str): The path to check against the list of excluded paths.
+            excluded_paths (List[str]): The list of excluded paths.
+
+        Returns:
+            bool: True if the path is not in the excluded paths list,
+            False otherwise.
+        """
+        # If path is None, return True
+        if not path:
             return True
+        # If excluded_paths is None or empty, return True
         if not excluded_paths:
             return True
+        # Remove the trailing slash from the path
+        path = path.rstrip("/")
+        # Check if path is in excluded_paths and return False if path is
+        # in excluded_paths
+        # Loop through excluded paths
+        for excluded_path in excluded_paths:
+            # Check if given path starts with excluded path, with * at the end
+            if excluded_path.endswith("*") and \
+                    path.startswith(excluded_path[:-1]):
+                # Return False if path starts with excluded path with * at end
+                return False
+            # Check if the given path is equal to the excluded path
+            elif path == excluded_path.rstrip("/"):
+                # Return False if the path is equal to the excluded path
+                return False
+        # If path is not in excluded_paths, return True
+        return True
 
-    def authorization_header(self, request=None) -> None:
-        """ authorization header"""
-        if request is None:
-            return None
-        authorization = request.headers.get('Authorization')
-        if authorization is None:
-            return None
-        else:
-            return authorization
+    def authorization_header(self, request=None) -> str:
+        """Gets the value of the Authorization header from the request
+
+        Args:
+            request (request, optional): Flask request obj. Defaults to None.
+
+        Returns:
+            str: The value of the Authorization header or None if not present.
+        """
+        # If request is None, return None
+        # If request doesn’t contain the header key Authorization, return None
+        if request is not None:
+            return request.headers.get('Authorization', None)
+        return None
 
     def current_user(self, request=None) -> TypeVar('User'):
-        """ return current user else None"""
+        """This function takes a request object as an optional argument
+        (defaults to None) and returns a value of type 'User'. The purpose
+        and how the request object is used will be determined later.
+        For now, it simply returns None.
+        """
         return None
