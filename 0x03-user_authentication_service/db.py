@@ -39,9 +39,18 @@ class DB:
         init_db()
 
     def add_user(self, email: str, hashed_password: str):
+        existing_user = self.get_user_by_email(email)
+        if existing_user:
+            raise ValueError(f"User with email '{email}' already exists.")
+
         new_user = User(email=email, hashed_password=hashed_password)
         self.session.add(new_user)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            raise ValueError(f"User with email '{email}' already exists.")
+
         return new_user
 
     def get_user_by_email(self, email: str):
