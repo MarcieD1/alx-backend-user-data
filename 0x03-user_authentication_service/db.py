@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """DB module
 """
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.session import Session
-from sqlalchemy.exc import InvalidRequestError
-from sqlalchemy.orm.exc import NoResultFound
-from user import Base, User
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy.exc import InvalidRequestError, NoResultFound
 from typing import TypeVar
 
-VALID_FIELDS = ['id', 'email', 'hashed_password', 'session_id', 'reset_token']
+Base = declarative_base()
 
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    email = Column(String(250), nullable=False)
+    hashed_password = Column(String(250), nullable=False)
+    session_id = Column(String(250))
+    reset_token = Column(String(250))
+
+class CustomInvalidRequestError(Exception):
+    pass
 
 class DB:
     """DB class
@@ -38,34 +44,52 @@ class DB:
         """
         Adds a new user to the Database.
         """
-        if not email or not hashed_password:
-            return
         user = User(email=email, hashed_password=hashed_password)
-        session = self._session
-        session.add(user)
-        session.commit()
+        self._session.add(user)
+        self._session.commit()
         return user
 
     def find_user_by(self, **kwargs) -> User:
         """
         Finds a User in the Database.
         """
-        if not kwargs or any(x not in VALID_FIELDS for x in kwargs):
-            raise InvalidRequestError
-        session = self._session
-        try:
-            return session.query(User).filter_by(**kwargs).one()
-        except Exception:
-            raise NoResultFound
+        for key in kwargs.keys():
+            if not hasattr(User, key):
+                raise CustomInvalidRequestError()
+
+        user = self._session.query(User).filter_by(**kwargs).first()
+
+        if user:
+            return user
+        raise NoResultFound()
 
     def update_user(self, user_id: int, **kwargs) -> None:
         """
         updating a user in the database
         """
-        session = self._session
+        VALID_FIELDS = {'email', 'hashed_password', 'session_id', 'reset_token'}
         user = self.find_user_by(id=user_id)
         for k, v in kwargs.items():
             if k not in VALID_FIELDS:
-                raise ValueError
+                raise ValueError(f"Invalid field: {k}")
             setattr(user, k, v)
-        session.commit()
+        self._session.commit()
+
+if __name__ == '__main__':
+    my_db = DB()
+
+    user = my_db.add_user("test@test.com", "PwdHashed")
+    print(f"Added user with ID: {user.id}")
+
+    try:
+        find_user = my_db.find_user_by(email="test2@test.com")
+        print(f"Found user with ID: {find_user.id}")
+    except NoResultFound:
+        print("User not found")
+
+    try:
+        find_user = my_db.find_user_by(no_email="test@test.com")
+        print(f"Found user with ID: {find_user.id}")
+    except CustomInvalidRequestError:
+        print("Invalid request")
+
